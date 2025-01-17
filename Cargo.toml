@@ -5,7 +5,7 @@ version = "0.1.0"
 
 [profile.release]
 lto = true
-opt-level = 3
+opt-level = "z"
 panic = "abort"
 strip = true
 
