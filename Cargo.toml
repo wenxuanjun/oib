@@ -1,0 +1,26 @@
+[package]
+name = "oib"
+edition = "2021"
+version = "0.1.0"
+
+[profile.release]
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+
+[dependencies]
+argh = "0.1.13"
+anyhow = "1.0.95"
+tempfile = "3.15.0"
+gpt = "4.0.0"
+toml = "0.8.19"
+
+[dependencies.serde]
+version = "1.0.217"
+features = ["derive"]
+
+[dependencies.fatfs]
+version = "0.3.6"
+default-features = false
+features = ["std", "alloc"]
