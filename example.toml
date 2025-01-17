@@ -1,0 +1,13 @@
+output = "output.img"
+
+[[files]]
+source = "build/kernel"
+dest = "kernel"
+
+[[files]]
+source = "assets/BOOTX64.EFI"
+dest = "efi/boot/bootx64.efi"
+
+[[files]]
+source = "assets/limine.conf"
+dest = "limine.conf"
