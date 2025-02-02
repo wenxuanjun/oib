@@ -12,7 +12,7 @@ strip = true
 [dependencies]
 argh = "0.1.13"
 anyhow = "1.0.95"
-tempfile = "3.15.0"
+tempfile = "3.16.0"
 gpt = "4.0.0"
 toml = "0.8.19"
 walkdir = "2.5.0"

@@ -1,9 +1,9 @@
 use anyhow::Context;
 use fatfs::Dir;
-use gpt::GptConfig;
 use gpt::disk::LogicalBlockSize;
 use gpt::mbr::ProtectiveMBR;
 use gpt::partition_types::EFI;
+use gpt::GptConfig;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
