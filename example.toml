@@ -12,6 +12,6 @@ dest = "efi/boot/bootx64.efi"
 source = "assets/limine.conf"
 dest = "limine.conf"
 
-# [[folders]]
-# source = "assets/static"
-# dest = "static"
+[[folders]]
+source = "assets/static"
+dest = "static"

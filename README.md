@@ -24,6 +24,10 @@ dest = "efi/boot/bootx64.efi"
 [[files]]
 source = "assets/limine.conf"
 dest = "limine.conf"
+
+[[folders]]
+source = "assets/static"
+dest = "static"
 ```
 
 ## Acknowledgement

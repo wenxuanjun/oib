@@ -17,16 +17,16 @@ pub struct ImageBuilder;
 
 impl ImageBuilder {
     pub fn build(files: Files, image_path: &Path) -> anyhow::Result<()> {
-        let fat_partition = NamedTempFile::new().context("failed to create temp file")?;
+        let fat_partition = NamedTempFile::new().context("Failed to create temp file")?;
 
         FatBuilder::create(files, fat_partition.path())
-            .context("failed to create FAT filesystem")?;
+            .context("Failed to create FAT filesystem")?;
         DiskCreator::create(fat_partition.path(), image_path)
-            .context("failed to create UEFI GPT disk image")?;
+            .context("Failed to create UEFI GPT disk image")?;
 
         fat_partition
             .close()
-            .context("failed to delete FAT partition after disk image creation")?;
+            .context("Failed to delete FAT partition after disk image creation")?;
 
         Ok(())
     }
@@ -42,13 +42,13 @@ impl FatBuilder {
             .create(true)
             .truncate(true)
             .open(out_path)
-            .with_context(|| format!("failed to write file to `{}`", out_path.display()))?;
+            .with_context(|| format!("Failed to write file to `{}`", out_path.display()))?;
 
         let files_size = files
             .values()
             .map(|source| fs::metadata(source).map(|meta| meta.len()))
             .collect::<Result<Vec<u64>, _>>()
-            .with_context(|| "failed to read files metadata")?;
+            .with_context(|| "Failed to read files metadata")?;
 
         const ADDITIONAL_SPACE: u64 = 1024 * 128;
         let fat_size = files_size.iter().sum::<u64>() + ADDITIONAL_SPACE;
@@ -74,7 +74,7 @@ impl FatBuilder {
 
             let mut new_file = root_dir
                 .create_file(&target_path_raw)
-                .with_context(|| format!("failed to create file at `{}`", target_path.display()))?;
+                .with_context(|| format!("Failed to create file at `{}`", target_path.display()))?;
 
             new_file.truncate().unwrap();
             io::copy(&mut fs::File::open(source)?, &mut new_file)?;
@@ -94,46 +94,46 @@ impl DiskCreator {
             .create(true)
             .truncate(true)
             .open(out_path)
-            .with_context(|| format!("failed to create GPT file at `{}`", out_path.display()))?;
+            .with_context(|| format!("Failed to create GPT file at `{}`", out_path.display()))?;
 
         let partition_size: u64 = fs::metadata(fat_image)
-            .context("failed to read metadata of fat image")?
+            .context("Failed to read metadata of fat image")?
             .len();
         let disk_size = partition_size + 1024 * 64;
         disk.set_len(disk_size)
-            .context("failed to set GPT image file length")?;
+            .context("Failed to set GPT image file length")?;
 
         let mbr =
             ProtectiveMBR::with_lb_size(u32::try_from((disk_size / 512) - 1).unwrap_or(0xffffffff));
         mbr.overwrite_lba0(&mut disk)
-            .context("failed to write protective MBR")?;
+            .context("Failed to write protective MBR")?;
 
         let block_size = LogicalBlockSize::Lb512;
         let mut gpt = GptConfig::new()
             .writable(true)
             .logical_block_size(block_size)
             .create_from_device(Box::new(&mut disk), None)
-            .context("failed to create GPT structure in file")?;
+            .context("Failed to create GPT structure in file")?;
         gpt.update_partitions(Default::default())
-            .context("failed to update GPT partitions")?;
+            .context("Failed to update GPT partitions")?;
 
         let partition_id = gpt
             .add_partition("boot", partition_size, EFI, 0, None)
-            .context("failed to add boot EFI partition")?;
+            .context("Failed to add boot EFI partition")?;
         let partition = gpt
             .partitions()
             .get(&partition_id)
-            .context("failed to open boot partition after creation")?;
+            .context("Failed to open boot partition after creation")?;
         let start_offset = partition
             .bytes_start(block_size)
-            .context("failed to get start offset of boot partition")?;
+            .context("Failed to get start offset of boot partition")?;
 
-        gpt.write().context("failed to write out GPT changes")?;
+        gpt.write().context("Failed to write out GPT changes")?;
 
         disk.seek(SeekFrom::Start(start_offset))
-            .context("failed to seek to start offset")?;
-        let mut fat_image = File::open(fat_image).context("failed to open FAT image")?;
-        io::copy(&mut fat_image, &mut disk).context("failed to copy FAT image to GPT disk")?;
+            .context("Failed to seek to start offset")?;
+        let mut fat_image = File::open(fat_image).context("Failed to open FAT image")?;
+        io::copy(&mut fat_image, &mut disk).context("Failed to copy FAT image to GPT disk")?;
 
         Ok(())
     }

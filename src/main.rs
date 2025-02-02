@@ -1,8 +1,10 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, ensure, Context, Result};
 use oib::{Files, ImageBuilder};
+use path_slash::PathBufExt;
 use serde::Deserialize;
-use std::env;
-use std::path::{absolute, PathBuf};
+use std::collections::btree_map::Entry;
+use std::path::{Path, PathBuf};
+use std::{env, fs};
 
 #[derive(Deserialize)]
 struct Config {
@@ -29,32 +31,61 @@ fn main() -> Result<()> {
         anyhow!("Usage: {exe_path} <config_path>")
     })?;
 
-    let content = std::fs::read_to_string(&config_path)?;
-    let config = toml::from_str::<Config>(&content)?;
+    let content = fs::read_to_string(&config_path)
+        .with_context(|| format!("Failed to read config file at '{}'", config_path))?;
 
-    let mut files: Files = config
-        .files
-        .into_iter()
-        .map(|file| (file.dest, PathBuf::from(file.source)))
-        .collect();
+    let config: Config = toml::from_str(&content)?;
 
-    for folder in config.folders {
-        let folder_path = absolute(&folder.source)?;
-        let to_add = walkdir::WalkDir::new(&folder.source)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter_map(|entry| {
-                let source = entry.path();
-                let abs_path = source.strip_prefix(&folder_path).ok()?;
-                let dest = PathBuf::from(&folder.dest).join(abs_path);
-                Some((dest.to_str()?.to_string(), source.to_path_buf()))
-            });
-        files.extend(to_add);
-    }
+    let mut files = process_files(config.files)?;
+    process_folders(config.folders, &mut files)?;
 
     let output_path = PathBuf::from(config.output);
     ImageBuilder::build(files, &output_path).expect("Failed to build image");
     println!("Created bootable UEFI disk image at {:#?}", &output_path);
 
+    Ok(())
+}
+
+fn process_files(files: Vec<File>) -> Result<Files> {
+    files
+        .into_iter()
+        .map(|file| {
+            let source = PathBuf::from(&file.source);
+            ensure!(
+                source.exists(),
+                "Source file '{}' does not exist",
+                source.display()
+            );
+            Ok((file.dest, source))
+        })
+        .collect()
+}
+
+fn process_folders(folders: Vec<Folder>, files: &mut Files) -> Result<()> {
+    for folder in folders {
+        let src_abs = Path::new(&folder.source)
+            .canonicalize()
+            .with_context(|| format!("Source folder '{}' does not exist", folder.source))?;
+
+        let dest_base = PathBuf::from(&folder.dest);
+        let walker = walkdir::WalkDir::new(&src_abs)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file());
+
+        for entry in walker {
+            let source = entry.path();
+            let rel_path = source.strip_prefix(&src_abs)?;
+
+            let dest = dest_base.join(rel_path);
+            let dest_str = dest.to_slash().expect("Invalid UTF-8 path");
+
+            if let Entry::Vacant(e) = files.entry(dest_str.to_string()) {
+                e.insert(source.to_path_buf());
+            } else {
+                println!("Skipping duplicate file: '{}'", dest_str);
+            }
+        }
+    }
     Ok(())
 }
