@@ -36,18 +36,8 @@ fn main() -> Result<()> {
 
     let config: Config = toml::from_str(&content)?;
 
-    let mut files = process_files(config.files)?;
-    process_folders(config.folders, &mut files)?;
-
-    let output_path = PathBuf::from(config.output);
-    ImageBuilder::build(files, &output_path).expect("Failed to build image");
-    println!("Created bootable UEFI disk image at {:#?}", &output_path);
-
-    Ok(())
-}
-
-fn process_files(files: Vec<File>) -> Result<Files> {
-    files
+    let mut files: Files = config
+        .files
         .into_iter()
         .map(|file| {
             let source = PathBuf::from(&file.source);
@@ -58,11 +48,9 @@ fn process_files(files: Vec<File>) -> Result<Files> {
             );
             Ok((file.dest, source))
         })
-        .collect()
-}
+        .collect::<Result<_, _>>()?;
 
-fn process_folders(folders: Vec<Folder>, files: &mut Files) -> Result<()> {
-    for folder in folders {
+    for folder in config.folders {
         let src_abs = Path::new(&folder.source)
             .canonicalize()
             .with_context(|| format!("Source folder '{}' does not exist", folder.source))?;
@@ -87,5 +75,10 @@ fn process_folders(folders: Vec<Folder>, files: &mut Files) -> Result<()> {
             }
         }
     }
+
+    let output_path = PathBuf::from(config.output);
+    ImageBuilder::build(files, &output_path).expect("Failed to build image");
+    println!("Created bootable UEFI disk image at {:#?}", &output_path);
+
     Ok(())
 }
