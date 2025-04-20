@@ -1,16 +1,17 @@
 use anyhow::{anyhow, ensure, Context, Result};
-use oib::{Files, ImageBuilder};
+use oib::ImageBuilder;
 use path_slash::PathBufExt;
 use serde::Deserialize;
 use std::collections::btree_map::Entry;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 #[derive(Deserialize)]
 struct Config {
     output: String,
-    files: Vec<File>,
-    folders: Vec<Folder>,
+    files: Option<Vec<File>>,
+    folders: Option<Vec<Folder>>,
 }
 
 #[derive(Deserialize)]
@@ -36,42 +37,51 @@ fn main() -> Result<()> {
 
     let config: Config = toml::from_str(&content)?;
 
-    let mut files: Files = config
-        .files
-        .into_iter()
-        .map(|file| {
+    let mut files = BTreeMap::new();
+
+    if let Some(files_config) = config.files {
+        for file in files_config {
             let source = PathBuf::from(&file.source);
             ensure!(
                 source.exists(),
                 "Source file '{}' does not exist",
                 source.display()
             );
-            Ok((file.dest, source))
-        })
-        .collect::<Result<_, _>>()?;
 
-    for folder in config.folders {
-        let src_abs = Path::new(&folder.source)
-            .canonicalize()
-            .with_context(|| format!("Source folder '{}' does not exist", folder.source))?;
-
-        let dest_base = PathBuf::from(&folder.dest);
-        let walker = walkdir::WalkDir::new(&src_abs)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file());
-
-        for entry in walker {
-            let source = entry.path();
-            let rel_path = source.strip_prefix(&src_abs)?;
-
-            let dest = dest_base.join(rel_path);
+            let dest = PathBuf::from(&file.dest);
             let dest_str = dest.to_slash().expect("Invalid UTF-8 path");
-
             if let Entry::Vacant(e) = files.entry(dest_str.to_string()) {
-                e.insert(source.to_path_buf());
+                e.insert(source);
             } else {
                 println!("Skipping duplicate file: '{}'", dest_str);
+            }
+        }
+    }
+
+    if let Some(folders) = config.folders {
+        for folder in folders {
+            let src_abs = Path::new(&folder.source)
+                .canonicalize()
+                .with_context(|| format!("Source folder '{}' does not exist", folder.source))?;
+
+            let dest_base = PathBuf::from(&folder.dest);
+            let walker = walkdir::WalkDir::new(&src_abs)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().is_file());
+
+            for entry in walker {
+                let source = entry.path();
+                let rel_path = source.strip_prefix(&src_abs)?;
+
+                let dest = dest_base.join(rel_path);
+                let dest_str = dest.to_slash().expect("Invalid UTF-8 path");
+
+                if let Entry::Vacant(e) = files.entry(dest_str.to_string()) {
+                    e.insert(source.to_path_buf());
+                } else {
+                    println!("Skipping duplicate file: '{}'", dest_str);
+                }
             }
         }
     }
