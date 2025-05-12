@@ -1,7 +1,13 @@
 [package]
 name = "oib"
-edition = "2021"
 version = "0.3.0"
+edition = "2021"
+authors = ["Xuanjun Wen <wenxuanjun@yahoo.com>"]
+description = "A simple GPT+FAT image builder"
+keywords = ["gpt", "fat", "image"]
+license = "MIT"
+homepage = "https://github.com/wenxuanjun/oib"
+repository = "https://github.com/wenxuanjun/oib"
 
 [profile.release]
 lto = true
