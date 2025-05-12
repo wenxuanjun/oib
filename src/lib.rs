@@ -50,7 +50,7 @@ impl FatBuilder {
             .collect::<Result<Vec<u64>, _>>()
             .with_context(|| "Failed to read files metadata")?;
 
-        const ADDITIONAL_SPACE: u64 = 1024 * 128;
+        const ADDITIONAL_SPACE: u64 = 1024 * 96;
         let fat_size = files_size.iter().sum::<u64>() + ADDITIONAL_SPACE;
         fat_file.set_len(fat_size).unwrap();
 

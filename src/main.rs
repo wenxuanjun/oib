@@ -1,11 +1,12 @@
 use anyhow::{anyhow, ensure, Context, Result};
+use argh::FromArgs;
 use oib::ImageBuilder;
 use path_slash::PathBufExt;
 use serde::Deserialize;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::{env, fs};
+use std::fs;
 
 #[derive(Deserialize)]
 struct Config {
@@ -26,16 +27,102 @@ struct Folder {
     dest: String,
 }
 
+#[derive(FromArgs)]
+/// UEFI bootable disk image creator
+struct Args {
+    /// output image path
+    #[argh(option, short = 'o')]
+    output: Option<String>,
+
+    /// config file path
+    #[argh(option, short = 'c')]
+    config: Option<String>,
+
+    /// add a file to the image (format: source:destination)
+    #[argh(option, short = 'f')]
+    file: Vec<String>,
+
+    /// add a folder to the image (format: source:destination)
+    #[argh(option, short = 'd')]
+    dir: Vec<String>,
+}
+
 fn main() -> Result<()> {
-    let config_path = env::args().nth(1).ok_or_else(|| {
-        let exe_path = env::args().next().unwrap();
-        anyhow!("Usage: {exe_path} <config_path>")
-    })?;
+    let args: Args = argh::from_env();
 
-    let content = fs::read_to_string(&config_path)
-        .with_context(|| format!("Failed to read config file at '{}'", config_path))?;
+    let config_path = args.config.clone();
 
-    let config: Config = toml::from_str(&content)?;
+    // Ensure at least one configuration source is provided
+    if config_path.is_none() && args.output.is_none() && args.file.is_empty() && args.dir.is_empty() {
+        return Err(anyhow!("Either a config file (-c) or output path (-o) with files/folders must be provided"));
+    }
+
+    // Initialize configuration
+    let mut config = if let Some(config_path) = config_path {
+        // Load configuration from file
+        let content = fs::read_to_string(&config_path)
+            .with_context(|| format!("Failed to read config file at '{}'", config_path))?;
+
+        toml::from_str(&content)?
+    } else {
+        // Create empty config
+        Config {
+            output: args.output.clone().ok_or_else(|| anyhow!("Output path is required when not using a config file"))?,
+            files: None,
+            folders: None,
+        }
+    };
+
+    // Override config with command line arguments if provided
+    if let Some(output) = args.output {
+        config.output = output;
+    }
+
+    // Parse file arguments
+    if !args.file.is_empty() {
+        let mut cli_files = Vec::new();
+        for file_arg in args.file {
+            let parts: Vec<&str> = file_arg.split(':').collect();
+            if parts.len() != 2 {
+                return Err(anyhow!("Invalid file format, expected source:destination in '{}'", file_arg));
+            }
+            cli_files.push(File {
+                source: parts[0].to_string(),
+                dest: parts[1].to_string(),
+            });
+        }
+
+        // Combine with existing files if any
+        if let Some(mut existing_files) = config.files.take() {
+            existing_files.extend(cli_files);
+            config.files = Some(existing_files);
+        } else {
+            config.files = Some(cli_files);
+        }
+    }
+
+    // Parse directory arguments
+    if !args.dir.is_empty() {
+        let mut cli_folders = Vec::new();
+        for dir_arg in args.dir {
+            let parts: Vec<&str> = dir_arg.split(':').collect();
+            if parts.len() != 2 {
+                return Err(anyhow!("Invalid directory format, expected source:destination in '{}'", dir_arg));
+            }
+            cli_folders.push(Folder {
+                source: parts[0].to_string(),
+                dest: parts[1].to_string(),
+            });
+        }
+
+        // Combine with existing folders if any
+        if let Some(mut existing_folders) = config.folders.take() {
+            existing_folders.extend(cli_folders);
+            config.folders = Some(existing_folders);
+        } else {
+            config.folders = Some(cli_folders);
+        }
+    }
 
     let mut files = BTreeMap::new();
 

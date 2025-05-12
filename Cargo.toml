@@ -1,7 +1,7 @@
 [package]
 name = "oib"
 edition = "2021"
-version = "0.2.2"
+version = "0.3.0"
 
 [profile.release]
 lto = true
