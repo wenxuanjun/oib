@@ -1,12 +1,12 @@
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 use argh::FromArgs;
 use oib::ImageBuilder;
 use path_slash::PathBufExt;
 use serde::Deserialize;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 
 #[derive(Deserialize)]
 struct Config {
@@ -40,11 +40,11 @@ struct Args {
 
     /// add a file to the image (format: source:destination)
     #[argh(option, short = 'f')]
-    file: Vec<String>,
+    files: Vec<String>,
 
     /// add a folder to the image (format: source:destination)
     #[argh(option, short = 'd')]
-    dir: Vec<String>,
+    dirs: Vec<String>,
 }
 
 fn main() -> Result<()> {
@@ -52,39 +52,45 @@ fn main() -> Result<()> {
 
     let config_path = args.config.clone();
 
-    // Ensure at least one configuration source is provided
-    if config_path.is_none() && args.output.is_none() && args.file.is_empty() && args.dir.is_empty() {
-        return Err(anyhow!("Either a config file (-c) or output path (-o) with files/folders must be provided"));
+    if config_path.is_none()
+        && args.output.is_none()
+        && args.files.is_empty()
+        && args.dirs.is_empty()
+    {
+        bail!("Config file or output path with files/folders required");
     }
 
-    // Initialize configuration
-    let mut config = if let Some(config_path) = config_path {
-        // Load configuration from file
-        let content = fs::read_to_string(&config_path)
-            .with_context(|| format!("Failed to read config file at '{}'", config_path))?;
+    let mut config = match config_path {
+        Some(config_path) => {
+            let content = fs::read_to_string(&config_path)
+                .with_context(|| format!("Failed to read config: '{}'", config_path))?;
 
-        toml::from_str(&content)?
-    } else {
-        // Create empty config
-        Config {
-            output: args.output.clone().ok_or_else(|| anyhow!("Output path is required when not using a config file"))?,
+            toml::from_str(&content)?
+        }
+        None => Config {
+            output: args
+                .output
+                .clone()
+                .ok_or_else(|| anyhow!("Output path is required without a config file"))?,
             files: None,
             folders: None,
-        }
+        },
     };
 
-    // Override config with command line arguments if provided
     if let Some(output) = args.output {
         config.output = output;
     }
 
     // Parse file arguments
-    if !args.file.is_empty() {
+    if !args.files.is_empty() {
         let mut cli_files = Vec::new();
-        for file_arg in args.file {
+        for file_arg in args.files {
             let parts: Vec<&str> = file_arg.split(':').collect();
             if parts.len() != 2 {
-                return Err(anyhow!("Invalid file format, expected source:destination in '{}'", file_arg));
+                return Err(anyhow!(
+                    "Invalid file format, expected source:destination in '{}'",
+                    file_arg
+                ));
             }
             cli_files.push(File {
                 source: parts[0].to_string(),
@@ -92,7 +98,6 @@ fn main() -> Result<()> {
             });
         }
 
-        // Combine with existing files if any
         if let Some(mut existing_files) = config.files.take() {
             existing_files.extend(cli_files);
             config.files = Some(existing_files);
@@ -102,12 +107,15 @@ fn main() -> Result<()> {
     }
 
     // Parse directory arguments
-    if !args.dir.is_empty() {
+    if !args.dirs.is_empty() {
         let mut cli_folders = Vec::new();
-        for dir_arg in args.dir {
+        for dir_arg in args.dirs {
             let parts: Vec<&str> = dir_arg.split(':').collect();
             if parts.len() != 2 {
-                return Err(anyhow!("Invalid directory format, expected source:destination in '{}'", dir_arg));
+                return Err(anyhow!(
+                    "Invalid directory format, expected source:destination in '{}'",
+                    dir_arg
+                ));
             }
             cli_folders.push(Folder {
                 source: parts[0].to_string(),
@@ -115,7 +123,6 @@ fn main() -> Result<()> {
             });
         }
 
-        // Combine with existing folders if any
         if let Some(mut existing_folders) = config.folders.take() {
             existing_folders.extend(cli_folders);
             config.folders = Some(existing_folders);
